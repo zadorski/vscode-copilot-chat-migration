@@ -9,6 +9,10 @@ The repository keeps payload, packaging, and root-wide agreements separate:
 - `flake.nix` only connects the package tree to the default development shell, checks, and the Nix formatter.
 - `justfile` provides short root-level commands without duplicating package logic.
 
+## Why Nix packaging?
+
+Nix is optional for direct PowerShell use. It pins the development inputs, makes the migration app and validation tools discoverable as separate outputs, and provides the same shell and checks on the flake's supported Linux systems. The PowerShell payload remains usable anywhere PowerShell 7.5+ is available, including Windows and macOS.
+
 Enter the default shell to access the packaged migration commands and validation tools:
 
 ```bash
