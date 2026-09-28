@@ -4,8 +4,11 @@
 param(
     [Parameter(Mandatory)]
     [string]$MappingPath,
+    [string]$WorkspaceStoragePath,
     [switch]$Open,
     [switch]$SkipPrompt,
+    [string]$OpenCommand = 'code',
+    [string[]]$OpenArgument = @('--new-window'),
     [int]$DelayMilliseconds = 750
 )
 
@@ -41,11 +44,11 @@ if ($unresolvedEntries.Count -gt 0) {
     throw 'Refusing to prepare a map containing unresolved target collision statuses.'
 }
 
-$targetWorkspaceStoragePath = if ([string]::IsNullOrWhiteSpace($env:APPDATA)) {
-    $null
+$targetWorkspaceStoragePath = if ($WorkspaceStoragePath) {
+    $WorkspaceStoragePath
 }
 else {
-    Join-Path $env:APPDATA 'Code\User\workspaceStorage'
+    Get-CcmDefaultWorkspaceStoragePath
 }
 $targetRecords = if ($targetWorkspaceStoragePath -and (Test-Path -LiteralPath $targetWorkspaceStoragePath -PathType Container)) {
     @(Get-CcmWorkspaceRecords -WorkspaceStoragePath $targetWorkspaceStoragePath)
@@ -78,16 +81,8 @@ $targets = @(
     }
 )
 
-$targets | Sort-Object Distro, TargetPath | Format-Table Distro, TargetPath, Status -AutoSize
+$targets | Sort-Object Type, Distro, TargetPath | Format-Table Type, Distro, TargetPath, Status -AutoSize
 $pendingTargets = @($targets | Where-Object Status -EQ 'Missing')
-$unsupportedTargets = @(
-    $pendingTargets |
-        Where-Object { $_.Type -ne 'WSL' -or [string]::IsNullOrWhiteSpace($_.Distro) }
-)
-if ($unsupportedTargets.Count -gt 0) {
-    $unsupportedUris = $unsupportedTargets | ForEach-Object TargetUri
-    throw "Refusing to open unsupported target URIs: $($unsupportedUris -join ', ')."
-}
 
 if ($pendingTargets.Count -eq 0) {
     Write-Host 'All target workspace records already exist. No target windows need to be opened.' -ForegroundColor Green
@@ -99,42 +94,40 @@ if (-not $Open) {
     return
 }
 
-if ($IsWindows -ne $true) {
-    throw 'Opening targets requires Windows PowerShell on the Windows host. Run this script from Windows Terminal PowerShell 7.5+; use WSL only for dry-run inspection.'
+if ([string]::IsNullOrWhiteSpace($OpenCommand)) {
+    throw 'An opener command is required with -Open. Pass a VS Code-compatible command that accepts a workspace URI.'
 }
 
-$wslCommand = Get-Command wsl.exe -ErrorAction SilentlyContinue
-if (-not $wslCommand) {
-    throw 'wsl.exe was not found. Run this script from Windows PowerShell on the Windows host.'
+$openCommandInfo = if (Test-Path -LiteralPath $OpenCommand -PathType Leaf) {
+    Get-Item -LiteralPath $OpenCommand
+}
+else {
+    Get-Command $OpenCommand -CommandType Application, ExternalScript -ErrorAction SilentlyContinue
+}
+if (-not $openCommandInfo) {
+    throw "Opener command not found: $OpenCommand. Pass -OpenCommand with a VS Code-compatible executable or script."
+}
+$openCommandPath = if ($openCommandInfo -is [System.IO.FileInfo]) {
+    $openCommandInfo.FullName
+}
+else {
+    $openCommandInfo.Source
 }
 
 if (-not $SkipPrompt) {
-    $confirmed = Read-Host "Open $($pendingTargets.Count) missing target workspace(s) through code-wsl? (Y/N)"
+    $confirmed = Read-Host "Open $($pendingTargets.Count) missing target workspace(s) with $OpenCommand? (Y/N)"
     if ($confirmed -notmatch '^[Yy]$') {
         Write-Host 'Target preparation cancelled.' -ForegroundColor Yellow
         return
     }
 }
 
-function ConvertTo-CcmBashSingleQuoted {
-    param([Parameter(Mandatory)][string]$Value)
-    $escaped = $Value.Replace("'", "'\''")
-    return "'" + $escaped + "'"
-}
-
 foreach ($target in $pendingTargets) {
-    $quotedTargetPath = ConvertTo-CcmBashSingleQuoted -Value $target.TargetPath
-    $remoteCommand = @(
-        'set -e'
-        'unset VSCODE_IPC_HOOK_CLI WSLEDIT_CODE_REMOTE_CLI VSCODE_GIT_ASKPASS_NODE VSCODE_GIT_ASKPASS_MAIN'
-        "command -v code-wsl >/dev/null 2>&1 || { printf '%s\n' 'code-wsl is unavailable in the target distro' >&2; exit 127; }"
-        "test -e $quotedTargetPath || { printf '%s\n' 'target path does not exist in the target distro' >&2; exit 2; }"
-        "WSLEDIT_CONTEXT=code-wsl code-wsl --new-window -- $quotedTargetPath"
-    ) -join '; '
-    Write-Host "Opening $($target.Distro): $($target.TargetPath)" -ForegroundColor Cyan
-    & $wslCommand.Source --distribution $target.Distro -- bash -lc $remoteCommand
+    $arguments = @($OpenArgument) + $target.TargetUri
+    Write-Host "Opening $($target.Type) $($target.Distro): $($target.TargetPath)" -ForegroundColor Cyan
+    & $openCommandPath @arguments
     if ($LASTEXITCODE -ne 0) {
-        throw "code-wsl failed for $($target.TargetUri) with exit code $LASTEXITCODE"
+        throw "Opener command failed for $($target.TargetUri) with exit code $LASTEXITCODE"
     }
     if ($DelayMilliseconds -gt 0) {
         Start-Sleep -Milliseconds $DelayMilliseconds

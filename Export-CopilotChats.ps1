@@ -4,6 +4,8 @@
 param(
     [string]$OutputPath,
     [string]$WorkspaceStoragePath,
+    [string[]]$WorkspaceId,
+    [switch]$All,
     [switch]$ListOnly,
     [switch]$SkipPrompts
 )
@@ -12,7 +14,10 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'CopilotChatsMigration.psm1') -Force
 
 if (-not $WorkspaceStoragePath) {
-    $WorkspaceStoragePath = Join-Path $env:APPDATA 'Code\User\workspaceStorage'
+    $WorkspaceStoragePath = Get-CcmDefaultWorkspaceStoragePath
+}
+if (-not $WorkspaceStoragePath) {
+    throw 'Workspace storage path could not be determined. Pass -WorkspaceStoragePath explicitly.'
 }
 
 Write-Host "Scanning workspaceStorage at: $WorkspaceStoragePath" -ForegroundColor Cyan
@@ -21,6 +26,10 @@ $workspaces = @(Get-CcmWorkspaceRecords -WorkspaceStoragePath $WorkspaceStorageP
 if ($workspaces.Count -eq 0) {
     Write-Warning "No valid workspaces found."
     return
+}
+
+if ($WorkspaceId -and $All) {
+    throw 'Use either -WorkspaceId or -All, not both.'
 }
 
 Write-Host "Found $($workspaces.Count) workspace(s)." -ForegroundColor Green
@@ -42,10 +51,13 @@ $gridColumns = @(
 )
 
 if ($ListOnly) {
-    $workspaces |
-        Sort-Object LastUsed -Descending |
-        Select-Object $gridColumns |
-        Out-GridView -Title 'VS Code workspace inventory (read-only; close when finished)' -Wait
+    $inventory = $workspaces | Sort-Object LastUsed -Descending | Select-Object $gridColumns
+    if (Get-Command Out-GridView -ErrorAction SilentlyContinue) {
+        $inventory | Out-GridView -Title 'VS Code workspace inventory (read-only; close when finished)' -Wait
+    }
+    else {
+        $inventory | Format-Table -AutoSize
+    }
     return
 }
 
@@ -66,12 +78,29 @@ if (-not $OutputPath) {
     }
 }
 
-$selected = @(
-    $workspaces |
-        Sort-Object LastUsed -Descending |
-        Select-Object $gridColumns |
-        Out-GridView -Title 'Select workspaces to export (Ctrl+Click for multiple, then OK)' -PassThru
-)
+$selected = if ($WorkspaceId) {
+    $requestedIds = @($WorkspaceId | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $selected = @($workspaces | Where-Object { $requestedIds -contains $_.ID })
+    $missingIds = @($requestedIds | Where-Object { $_ -notin $selected.ID })
+    if ($missingIds.Count -gt 0) {
+        throw "Workspace ID(s) not found: $($missingIds -join ', ')"
+    }
+    $selected
+}
+elseif ($All) {
+    $workspaces
+}
+elseif (Get-Command Out-GridView -ErrorAction SilentlyContinue) {
+    @(
+        $workspaces |
+            Sort-Object LastUsed -Descending |
+            Select-Object $gridColumns |
+            Out-GridView -Title 'Select workspaces to export (Ctrl+Click for multiple, then OK)' -PassThru
+    )
+}
+else {
+    throw 'Interactive selection requires Out-GridView. Use -All or -WorkspaceId for headless export.'
+}
 
 if ($selected.Count -eq 0) {
     Write-Host 'No workspaces selected. Exiting.' -ForegroundColor Yellow

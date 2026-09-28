@@ -256,7 +256,10 @@ if (-not (Test-Path -LiteralPath $ZipPath -PathType Leaf)) {
 }
 
 if (-not $WorkspaceStoragePath) {
-    $WorkspaceStoragePath = Join-Path $env:APPDATA 'Code\User\workspaceStorage'
+    $WorkspaceStoragePath = Get-CcmDefaultWorkspaceStoragePath
+}
+if (-not $WorkspaceStoragePath) {
+    throw 'Workspace storage path could not be determined. Pass -WorkspaceStoragePath explicitly.'
 }
 if (-not (Test-Path -LiteralPath $WorkspaceStoragePath -PathType Container)) {
     throw "VS Code workspaceStorage not found at: $WorkspaceStoragePath"

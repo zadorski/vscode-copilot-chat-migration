@@ -10,7 +10,7 @@ param(
     [string]$SourcePathPrefix,
     [Parameter(Mandatory)]
     [string]$TargetPathPrefix,
-    [string]$WorkspaceFileName = 'nix-enabled.code-workspace',
+    [string]$WorkspaceFileName,
     [string]$SourceWorkspaceStoragePath,
     [string]$TargetWorkspaceStoragePath,
     [string]$OutputPath,
@@ -23,7 +23,10 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'CopilotChatsMigration.psm1') -Force
 
 if (-not $SourceWorkspaceStoragePath) {
-    $SourceWorkspaceStoragePath = Join-Path $env:APPDATA 'Code\User\workspaceStorage'
+    $SourceWorkspaceStoragePath = Get-CcmDefaultWorkspaceStoragePath
+}
+if (-not $SourceWorkspaceStoragePath) {
+    throw 'Source workspace storage path could not be determined. Pass -SourceWorkspaceStoragePath explicitly.'
 }
 if (-not $TargetWorkspaceStoragePath) {
     $TargetWorkspaceStoragePath = $SourceWorkspaceStoragePath

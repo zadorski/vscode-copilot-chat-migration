@@ -16,13 +16,36 @@ function Get-CcmJsonPropertyValue {
     return $null
 }
 
-function Get-CcmVsCodeProcesses {
-    if ($IsWindows -eq $false) {
-        return @()
+function Get-CcmDefaultWorkspaceStoragePath {
+    if ($IsWindows) {
+        if ([string]::IsNullOrWhiteSpace($env:APPDATA)) {
+            return $null
+        }
+
+        return Join-Path $env:APPDATA 'Code/User/workspaceStorage'
     }
 
+    if ([string]::IsNullOrWhiteSpace($HOME)) {
+        return $null
+    }
+
+    if ($IsMacOS) {
+        return Join-Path $HOME 'Library/Application Support/Code/User/workspaceStorage'
+    }
+
+    $configRoot = if ([string]::IsNullOrWhiteSpace($env:XDG_CONFIG_HOME)) {
+        Join-Path $HOME '.config'
+    }
+    else {
+        $env:XDG_CONFIG_HOME
+    }
+
+    return Join-Path $configRoot 'Code/User/workspaceStorage'
+}
+
+function Get-CcmVsCodeProcesses {
     @(
-        Get-Process -Name @('Code', 'Code - Insiders', 'code-insiders') -ErrorAction SilentlyContinue
+        Get-Process -Name @('Code', 'Code - Insiders', 'code', 'code-insiders') -ErrorAction SilentlyContinue
     )
 }
 
@@ -232,6 +255,7 @@ function Convert-CcmUriReferences {
 Export-ModuleMember -Function @(
     'Assert-CcmVsCodeClosed',
     'Convert-CcmUriReferences',
+    'Get-CcmDefaultWorkspaceStoragePath',
     'Get-CcmVsCodeProcesses',
     'Get-CcmRawWorkspaceUri',
     'Get-CcmWorkspaceInfo',
