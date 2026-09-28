@@ -1,10 +1,17 @@
 # VS Code Copilot Chat Migration
 
-PowerShell 7.5+ tools for exporting and importing VS Code `workspaceStorage` state when remote hosts or paths change.
+PowerShell 7.5+ scripts for moving VS Code `workspaceStorage` records when a remote host, distro, or workspace path changes.
 
-Run `just shell` for the packaged commands and validation tools. The shortest safe workflow is export, map, prepare, dry-run, then import with a new backup path.
+The workflow exports selected records, maps source workspace URIs to target URIs, prepares missing target records, then dry-runs and imports the state. The importer preserves each target `workspace.json`, rewrites chat-session URIs, replaces stale target files, and creates a backup before copying.
 
-- [Migration guide](docs/migration.md)
+Start an export from PowerShell:
+
+```powershell
+pwsh -NoProfile -File ./packages/copilot-chats-migration/Export-CopilotChats.ps1 -WorkspaceStoragePath /path/to/workspaceStorage -OutputPath /path/to/copilot-chats.zip
+```
+
+Use [the migration guide](docs/migration.md) for the map, preparation, dry-run, and import steps. Keep an independent `Chat: Export Chat...` JSON export for critical conversations.
+
 - [Safety and recovery](docs/safety-and-recovery.md)
 - [Packaging and development](docs/development.md)
 

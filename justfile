@@ -1,7 +1,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-scripts := "packages/vscode-copilot-chat-migration/CopilotChatsMigration.psm1 packages/vscode-copilot-chat-migration/Export-CopilotChats.ps1 packages/vscode-copilot-chat-migration/Import-CopilotChats.ps1 packages/vscode-copilot-chat-migration/New-CopilotChatMigrationMap.ps1 packages/vscode-copilot-chat-migration/Prepare-CopilotChatTargets.ps1 packages/powershell-tools/scripts/powershell-scriptanalyzer.ps1 packages/powershell-tools/scripts/powershell-format.ps1"
-nix_files := "flake.nix packages/vscode-copilot-chat-migration/package.nix packages/powershell-tools/package.nix"
+scripts := "packages/copilot-chats-migration/CopilotChatsMigration.psm1 packages/copilot-chats-migration/Export-CopilotChats.ps1 packages/copilot-chats-migration/Import-CopilotChats.ps1 packages/copilot-chats-migration/New-CopilotChatMigrationMap.ps1 packages/copilot-chats-migration/Prepare-CopilotChatTargets.ps1 packages/powershell-scriptanalyzer/scripts/Invoke-ScriptAnalyzer.ps1 packages/powershell-format/scripts/Invoke-Formatter.ps1"
+nix_files := "flake.nix packages/copilot-chats-migration/package.nix packages/powershell-scriptanalyzer/package.nix packages/powershell-format/package.nix"
 
 _default:
     @just --list
@@ -13,16 +13,19 @@ format:
     nix fmt -- {{nix_files}}
 
 lint:
-    nix develop --command powershell-scriptanalyzer {{scripts}}
+    nix develop --command Invoke-ScriptAnalyzer {{scripts}}
 
 format-powershell:
-    nix develop --command powershell-format {{scripts}}
+    nix develop --command Invoke-Formatter {{scripts}}
 
 check:
     nix flake check
 
 build:
-    nix build .#vscode-copilot-chat-migration
+    nix build .#copilot-chats-migration
 
-build-tools:
-    nix build .#powershell-tools
+build-scriptanalyzer:
+    nix build .#powershell-scriptanalyzer
+
+build-format:
+    nix build .#powershell-format

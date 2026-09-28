@@ -7,7 +7,7 @@
 }:
 
 stdenvNoCC.mkDerivation (finalAttrs: {
-  pname = "vscode-copilot-chat-migration";
+  pname = "copilot-chats-migration";
   version = "0.1.0";
 
   src = ./.;
@@ -24,21 +24,21 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     install -Dm644 New-CopilotChatMigrationMap.ps1 "$share/New-CopilotChatMigrationMap.ps1"
     install -Dm644 Prepare-CopilotChatTargets.ps1 "$share/Prepare-CopilotChatTargets.ps1"
 
-    makeWrapper "${powershell}/bin/pwsh" "$out/bin/copilot-chat-export" \
+    makeWrapper "${powershell}/bin/pwsh" "$out/bin/Export-CopilotChats" \
       --add-flags "-NoLogo -NoProfile -File $share/Export-CopilotChats.ps1"
-    makeWrapper "${powershell}/bin/pwsh" "$out/bin/copilot-chat-import" \
+    makeWrapper "${powershell}/bin/pwsh" "$out/bin/Import-CopilotChats" \
       --add-flags "-NoLogo -NoProfile -File $share/Import-CopilotChats.ps1"
-    makeWrapper "${powershell}/bin/pwsh" "$out/bin/copilot-chat-map" \
+    makeWrapper "${powershell}/bin/pwsh" "$out/bin/New-CopilotChatMigrationMap" \
       --add-flags "-NoLogo -NoProfile -File $share/New-CopilotChatMigrationMap.ps1"
-    makeWrapper "${powershell}/bin/pwsh" "$out/bin/copilot-chat-prepare" \
+    makeWrapper "${powershell}/bin/pwsh" "$out/bin/Prepare-CopilotChatTargets" \
       --add-flags "-NoLogo -NoProfile -File $share/Prepare-CopilotChatTargets.ps1"
     runHook postInstall
   '';
 
   meta = {
-    description = "PowerShell tools for migrating VS Code workspace state";
+    description = "PowerShell commands for migrating VS Code Copilot Chat workspace state";
     homepage = "https://github.com/zadorski/vscode-copilot-chat-migration";
-    mainProgram = "copilot-chat-export";
+    mainProgram = "Export-CopilotChats";
     platforms = lib.platforms.all;
   };
 })

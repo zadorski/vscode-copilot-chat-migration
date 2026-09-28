@@ -20,7 +20,7 @@
       perSystem =
         { config, pkgs, ... }:
         let
-          migrationScripts = map (name: "${self}/packages/vscode-copilot-chat-migration/${name}") [
+          migrationScripts = map (name: "${self}/packages/copilot-chats-migration/${name}") [
             "CopilotChatsMigration.psm1"
             "Export-CopilotChats.ps1"
             "Import-CopilotChats.ps1"
@@ -34,24 +34,26 @@
           devShells.default = pkgs.mkShell {
             packages = [
               pkgs.powershell
-              config.packages.vscode-copilot-chat-migration
-              config.packages.powershell-tools
+              config.packages.copilot-chats-migration
+              config.packages.powershell-scriptanalyzer
+              config.packages.powershell-format
             ];
             POWERSHELL_TELEMETRY_OPTOUT = "1";
             POWERSHELL_UPDATECHECK = "Off";
           };
 
           checks.powershell-scripts =
-            pkgs.runCommand "vscode-copilot-chat-migration-check"
+            pkgs.runCommand "copilot-chats-migration-check"
               {
                 nativeBuildInputs = [
                   pkgs.powershell
-                  config.packages.powershell-tools
+                  config.packages.powershell-scriptanalyzer
+                  config.packages.powershell-format
                 ];
               }
               ''
-                powershell-scriptanalyzer ${pkgs.lib.escapeShellArgs migrationScripts}
-                powershell-format ${pkgs.lib.escapeShellArgs migrationScripts}
+                Invoke-ScriptAnalyzer ${pkgs.lib.escapeShellArgs migrationScripts}
+                Invoke-Formatter ${pkgs.lib.escapeShellArgs migrationScripts}
                 touch "$out"
               '';
 

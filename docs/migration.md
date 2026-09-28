@@ -4,7 +4,7 @@ The scripts move VS Code workspace records stored in the platform's VS Code `Use
 
 The examples use placeholders. Replace the paths, host names, and workspace filename with values from your own machines.
 
-The direct scripts live under `packages/vscode-copilot-chat-migration/`. The packaged commands are available after entering `nix develop` or running `just shell`.
+The direct scripts live under `packages/copilot-chats-migration/`. The packaged commands are available after entering `nix develop` or running `just shell`.
 
 ## 1. Set up the session
 
@@ -20,14 +20,14 @@ Use the direct `.ps1` files from the package directory, or the packaged command 
 ## 2. Export source state
 
 ```powershell
-.\packages\vscode-copilot-chat-migration\Export-CopilotChats.ps1 -WorkspaceStoragePath $storage -OutputPath "$backup\copilot-chats.zip"
+.\packages\copilot-chats-migration\Export-CopilotChats.ps1 -WorkspaceStoragePath $storage -OutputPath "$backup\copilot-chats.zip"
 ```
 
 The interactive selector chooses workspace records, not project names. `-ListOnly` produces a read-only inventory. On hosts without `Out-GridView`, use `-All` or one or more `-WorkspaceId` values instead:
 
 ```powershell
-.\packages\vscode-copilot-chat-migration\Export-CopilotChats.ps1 -WorkspaceStoragePath $storage -OutputPath "$backup\copilot-chats.zip" -All -SkipPrompts
-.\packages\vscode-copilot-chat-migration\Export-CopilotChats.ps1 -WorkspaceStoragePath $storage -OutputPath "$backup\selected.zip" -WorkspaceId 0123456789abcdef -SkipPrompts
+.\packages\copilot-chats-migration\Export-CopilotChats.ps1 -WorkspaceStoragePath $storage -OutputPath "$backup\copilot-chats.zip" -All -SkipPrompts
+.\packages\copilot-chats-migration\Export-CopilotChats.ps1 -WorkspaceStoragePath $storage -OutputPath "$backup\selected.zip" -WorkspaceId 0123456789abcdef -SkipPrompts
 ```
 
 Close VS Code after selection and before the copy begins.
@@ -35,7 +35,7 @@ Close VS Code after selection and before the copy begins.
 ## 3. Generate and review a map
 
 ```powershell
-.\packages\vscode-copilot-chat-migration\New-CopilotChatMigrationMap.ps1 `
+.\packages\copilot-chats-migration\New-CopilotChatMigrationMap.ps1 `
   -SourceWslHost old-distro -TargetWslHost new-distro `
   -SourcePathPrefix /home/user/workspaces `
   -TargetPathPrefix /home/user/workspaces `
@@ -52,7 +52,7 @@ The generator uses complete workspace URIs, escapes path segments, sorts output,
 Review the missing records first:
 
 ```powershell
-.\packages\vscode-copilot-chat-migration\Prepare-CopilotChatTargets.ps1 `
+.\packages\copilot-chats-migration\Prepare-CopilotChatTargets.ps1 `
   -MappingPath "$backup\migration-map.json" `
   -WorkspaceStoragePath $storage
 ```
@@ -60,7 +60,7 @@ Review the missing records first:
 Open missing records with a VS Code-compatible command. The command receives the target workspace URI after the arguments:
 
 ```powershell
-.\packages\vscode-copilot-chat-migration\Prepare-CopilotChatTargets.ps1 `
+.\packages\copilot-chats-migration\Prepare-CopilotChatTargets.ps1 `
   -MappingPath "$backup\migration-map.json" `
   -WorkspaceStoragePath $storage `
   -Open -OpenCommand code -OpenArgument @('--new-window')
@@ -71,7 +71,7 @@ Use `-OpenCommand` for another executable or wrapper script. The helper does not
 ## 5. Validate and import
 
 ```powershell
-.\packages\vscode-copilot-chat-migration\Import-CopilotChats.ps1 `
+.\packages\copilot-chats-migration\Import-CopilotChats.ps1 `
   -ZipPath "$backup\copilot-chats.zip" `
   -MappingPath "$backup\migration-map.json" `
   -WorkspaceStoragePath $storage `
@@ -81,7 +81,7 @@ Use `-OpenCommand` for another executable or wrapper script. The helper does not
 If the plan is correct, import with a new explicit backup path:
 
 ```powershell
-.\packages\vscode-copilot-chat-migration\Import-CopilotChats.ps1 `
+.\packages\copilot-chats-migration\Import-CopilotChats.ps1 `
   -ZipPath "$backup\copilot-chats.zip" `
   -MappingPath "$backup\migration-map.json" `
   -WorkspaceStoragePath $storage `
