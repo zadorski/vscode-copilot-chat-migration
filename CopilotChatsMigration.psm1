@@ -1,4 +1,4 @@
-﻿Set-StrictMode -Version Latest
+Set-StrictMode -Version Latest
 
 function Get-CcmJsonPropertyValue {
     param(
@@ -14,6 +14,46 @@ function Get-CcmJsonPropertyValue {
     }
 
     return $null
+}
+
+function Get-CcmVsCodeProcesses {
+    if ($IsWindows -eq $false) {
+        return @()
+    }
+
+    @(
+        Get-Process -Name @('Code', 'Code - Insiders', 'code-insiders') -ErrorAction SilentlyContinue
+    )
+}
+
+function Assert-CcmVsCodeClosed {
+    [CmdletBinding()]
+    param(
+        [switch]$SkipPrompt
+    )
+
+    $processes = @(Get-CcmVsCodeProcesses)
+    if ($processes.Count -eq 0) {
+        return
+    }
+
+    $processNames = $processes | Select-Object -ExpandProperty ProcessName -Unique
+    $message = "VS Code is still running ($($processNames -join ', ')). Close every VS Code window before copying workspaceStorage."
+    if ($SkipPrompt) {
+        throw "$message Re-run after closing VS Code."
+    }
+
+    Write-Warning $message
+    $confirmed = Read-Host 'Close VS Code now, then enter Y to recheck (Y/N)'
+    if ($confirmed -notmatch '^[Yy]$') {
+        throw 'Operation cancelled while VS Code was still running.'
+    }
+
+    $remaining = @(Get-CcmVsCodeProcesses)
+    if ($remaining.Count -gt 0) {
+        $remainingNames = $remaining | Select-Object -ExpandProperty ProcessName -Unique
+        throw "VS Code is still running ($($remainingNames -join ', ')). Close it and run the command again."
+    }
 }
 
 function Get-CcmRawWorkspaceUri {
@@ -75,17 +115,17 @@ function Get-CcmWorkspaceInfo {
     $workspaceKind = if ($pathPart -match '\.code-workspace$') { 'WorkspaceFile' } else { 'Folder' }
 
     [PSCustomObject]@{
-        RawUri       = $RawUri
-        DecodedUri   = $decoded
-        Type         = $type
-        Host         = $hostName
-        RemoteName   = $remoteName
-        Path         = $pathPart
-        Project      = $project
-        Repo         = $repo
+        RawUri        = $RawUri
+        DecodedUri    = $decoded
+        Type          = $type
+        Host          = $hostName
+        RemoteName    = $remoteName
+        Path          = $pathPart
+        Project       = $project
+        Repo          = $repo
         WorkspaceKind = $workspaceKind
-        FolderPath   = $FolderPath
-        ID           = $Id
+        FolderPath    = $FolderPath
+        ID            = $Id
     }
 }
 
@@ -131,24 +171,24 @@ function Get-CcmWorkspaceRecords {
                 $lastUsed = if ($stateDb) { $stateDb.LastWriteTime } else { $folder.LastWriteTime }
 
                 [PSCustomObject]@{
-                    Repo             = $info.Repo
-                    Subproject       = $info.Project
-                    Host             = $info.Host
-                    RemoteName       = $info.RemoteName
-                    Type             = $info.Type
-                    WorkspaceKind    = $info.WorkspaceKind
-                    Path             = $info.Path
-                    ID               = $folder.Name
-                    HasChatData      = [bool]$stateDb -or (Test-Path -LiteralPath $chatSessionsPath -PathType Container)
-                    ChatSessionCount = $chatFiles.Count
-                    ChatBytes        = $chatBytes
-                    StateDbMB        = if ($stateDb) { [math]::Round($stateDb.Length / 1MB, 2) } else { 0 }
-                    Created          = $folder.CreationTime.ToString('yyyy-MM-dd HH:mm')
-                    LastUsed         = $lastUsed.ToString('yyyy-MM-dd HH:mm')
-                    FolderPath       = $folder.FullName
+                    Repo              = $info.Repo
+                    Subproject        = $info.Project
+                    Host              = $info.Host
+                    RemoteName        = $info.RemoteName
+                    Type              = $info.Type
+                    WorkspaceKind     = $info.WorkspaceKind
+                    Path              = $info.Path
+                    ID                = $folder.Name
+                    HasChatData       = [bool]$stateDb -or (Test-Path -LiteralPath $chatSessionsPath -PathType Container)
+                    ChatSessionCount  = $chatFiles.Count
+                    ChatBytes         = $chatBytes
+                    StateDbMB         = if ($stateDb) { [math]::Round($stateDb.Length / 1MB, 2) } else { 0 }
+                    Created           = $folder.CreationTime.ToString('yyyy-MM-dd HH:mm')
+                    LastUsed          = $lastUsed.ToString('yyyy-MM-dd HH:mm')
+                    FolderPath        = $folder.FullName
                     WorkspaceJsonPath = $workspaceJsonPath
-                    RawUri           = $rawUri
-                    DecodedUri       = $info.DecodedUri
+                    RawUri            = $rawUri
+                    DecodedUri        = $info.DecodedUri
                 }
             }
             catch {
@@ -190,7 +230,9 @@ function Convert-CcmUriReferences {
 }
 
 Export-ModuleMember -Function @(
+    'Assert-CcmVsCodeClosed',
     'Convert-CcmUriReferences',
+    'Get-CcmVsCodeProcesses',
     'Get-CcmRawWorkspaceUri',
     'Get-CcmWorkspaceInfo',
     'Get-CcmWorkspaceRecords'

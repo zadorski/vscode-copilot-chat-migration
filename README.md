@@ -1,174 +1,121 @@
 # Copilot Chat Migration
 
-PowerShell 7.5+ scripts for migrating GitHub Copilot chat state between VS Code workspace records when a WSL distro or Linux path changes.
+PowerShell 7.5+ tools for moving VS Code workspace state when a WSL distro or Linux path changes. The maintained fork is on [`main`](https://github.com/zadorski/vscode-copilot-chat-migration).
 
-This fork is maintained on the `main` branch:
-
-`https://github.com/zadorski/vscode-copilot-chat-migration`
-
-## What the scripts protect
-
-VS Code stores workspace state under:
-
-```text
-%APPDATA%\Code\User\workspaceStorage
-```
-
-Each directory has a generated ID, but `workspace.json` contains the workspace URI that controls how VS Code finds the record. The scripts therefore map full source URIs to full target URIs rather than matching by project name or folder ID.
-
-The importer:
-
-- preserves the target `workspace.json`
-- backs up every target workspace before writing
-- refuses duplicate source-to-target mappings
-- supports `-DryRun` without changing target storage
-- rewrites mapped `chatSessions/*.json` URI references
-- copies `state.vscdb` and other workspace state files as binary data
-
-Do not import two source records into one target record. Duplicate source records are common after repeatedly opening a folder and a `.code-workspace` file; review those collisions explicitly.
+VS Code stores these records in `%APPDATA%\Code\User\workspaceStorage`. Folder names are generated IDs; `workspace.json` contains the URI that identifies the workspace. The map therefore uses full source and target URIs, not project names.
 
 ## Requirements
 
-- Windows host with VS Code workspace storage
-- PowerShell 7.5 or newer
-- `Out-GridView` for the interactive exporter
-- VS Code closed before exporting or importing workspace state
-- the target WSL distro already installed
-- the target `code-wsl` command available inside the target distro
+- Windows Terminal running PowerShell 7.5 or newer
+- `Out-GridView` for interactive export selection
+- VS Code closed before export, backup, or import writes
+- the target WSL distro and its `code-wsl` command already available
 
-The scripts are intended to run on Windows PowerShell 7.5+, not inside WSL. The scripts accept explicit storage paths for testing from Linux `pwsh`.
+Run real migrations from the Windows host. `-Open` rejects WSL-side PowerShell; Linux `pwsh` is supported only for explicit-path tests and dry-run inspection.
 
-## Repeatable WSL migration
+## Windows Terminal workflow
 
-The example below migrates `nixos` to `welnix` and changes `/home/nixos/workspaces` to `/home/nixos/workspace`. Adjust the values to your environment.
-
-Set the working directory to the extracted repository:
+This example migrates `nixos` to `welnix`, `/home/nixos/workspaces` to `/home/nixos/workspace`, and folder records to `nix-enabled.code-workspace`.
 
 ```powershell
-cd C:\path\to\vscode-copilot-chat-migration
+Set-Location C:\path\to\vscode-copilot-chat-migration
 $storage = Join-Path $env:APPDATA 'Code\User\workspaceStorage'
+$backup = 'C:\backup'
+New-Item -ItemType Directory -Path $backup -Force | Out-Null
 ```
 
-### 1. Export source workspace state
-
-First create a ZIP. The grid shows workspace kind, chat count, database size, raw URI, and storage folder.
+1. Export and keep the ZIP plus separate `Chat: Export Chat...` JSON files for critical conversations:
 
 ```powershell
-.\Export-CopilotChats.ps1 -OutputPath C:\backup\nixos-copilot-chats.zip
+.\Export-CopilotChats.ps1 -OutputPath "$backup\nixos-copilot-chats.zip"
 ```
 
-Before copying, the exporter asks you to:
-
-1. Run `Chat: Export Chat...` for critical conversations and keep those JSON files separately.
-2. Close every VS Code window.
-
-For a read-only inventory, use:
-
-```powershell
-.\Export-CopilotChats.ps1 -WorkspaceStoragePath $storage -ListOnly
-```
-
-Keep both the ZIP and the individual `Chat: Export Chat...` JSON files until the target has been validated.
-
-### 2. Generate the deterministic URI map
+2. Generate and review the URI map. The generator sorts mappings, URI-escapes path segments, and refuses duplicate target URIs by default:
 
 ```powershell
 .\New-CopilotChatMigrationMap.ps1 `
-  -SourceWslHost nixos `
-  -TargetWslHost welnix `
+  -SourceWslHost nixos -TargetWslHost welnix `
   -SourcePathPrefix /home/nixos/workspaces `
   -TargetPathPrefix /home/nixos/workspace `
   -WorkspaceFileName nix-enabled.code-workspace `
   -SourceWorkspaceStoragePath $storage `
   -TargetWorkspaceStoragePath $storage `
-  -OutputPath C:\backup\nixos-to-welnix-map.json
+  -OutputPath "$backup\nixos-to-welnix-map.json"
 ```
 
-Folder workspaces are mapped to `nix-enabled.code-workspace` under the target path. Existing workspace-file records retain their file name. The map records source ID, source URI, target URI, target ID when known, and a status.
+Use `-AllowTargetCollisions` only to produce a review map. Do not import it until every source maps to one target record.
 
-The generator refuses duplicate target URIs by default. To write a review-only map containing collisions, use:
-
-```powershell
-.\New-CopilotChatMigrationMap.ps1 ... -AllowTargetCollisions
-```
-
-Do not import that map. Open the JSON, keep one source record per target URI, or correct the target URI/ID, then rerun the importer. This is especially important when one source record is a folder and another is a workspace file for the same project. The importer refuses unresolved collision statuses and duplicate target URIs.
-
-Records outside `SourcePathPrefix` are listed as skipped. Generate a separate map with a different prefix if those records are also needed.
-
-### 3. Open every target workspace once
-
-Review the target list without opening anything:
+3. Review target records, then open only missing targets:
 
 ```powershell
-.\Prepare-CopilotChatTargets.ps1 -MappingPath C:\backup\nixos-to-welnix-map.json
-```
-
-Then open the targets in one pass:
-
-```powershell
+.\Prepare-CopilotChatTargets.ps1 -MappingPath "$backup\nixos-to-welnix-map.json"
 .\Prepare-CopilotChatTargets.ps1 `
-  -MappingPath C:\backup\nixos-to-welnix-map.json `
-  -Open
+  -MappingPath "$backup\nixos-to-welnix-map.json" -Open
 ```
 
-The helper calls `wsl.exe` and runs `WSLEDIT_CONTEXT=code-wsl code-wsl ...` inside `welnix`. This avoids the context-sensitive `code` alias selecting the wrong distro. Let VS Code finish creating the target workspace records, then close every VS Code window again.
+The helper invokes `wsl.exe` for `welnix`, clears inherited remote CLI and askpass endpoints, verifies `code-wsl` and the target path inside that distro, and then opens the target. Wait for VS Code to create the records, then close every VS Code window.
 
-### 4. Validate the import plan
-
-The importer re-reads target workspace storage after preparation; map statuses such as `Open target workspace first` are therefore not trusted as proof that a target exists.
+4. Validate the import without changing storage:
 
 ```powershell
 .\Import-CopilotChats.ps1 `
-  -ZipPath C:\backup\nixos-copilot-chats.zip `
-  -MappingPath C:\backup\nixos-to-welnix-map.json `
-  -WorkspaceStoragePath $storage `
-  -DryRun
+  -ZipPath "$backup\nixos-copilot-chats.zip" `
+  -MappingPath "$backup\nixos-to-welnix-map.json" `
+  -WorkspaceStoragePath $storage -DryRun
 ```
 
-Dry-run checks that every selected source record has exactly one target record, that no two exports target the same record, and that all collision statuses are resolved. It creates no backup and writes no workspace state.
-
-### 5. Import with a target backup
+5. Perform the backed-up import. An explicit backup path must be new; an existing path is refused:
 
 ```powershell
 .\Import-CopilotChats.ps1 `
-  -ZipPath C:\backup\nixos-copilot-chats.zip `
-  -MappingPath C:\backup\nixos-to-welnix-map.json `
+  -ZipPath "$backup\nixos-copilot-chats.zip" `
+  -MappingPath "$backup\nixos-to-welnix-map.json" `
   -WorkspaceStoragePath $storage `
-  -BackupPath C:\backup\welnix-target-before-import.zip
+  -BackupPath "$backup\welnix-target-before-import.zip"
 ```
 
-The importer prompts for confirmation that critical chats were exported and VS Code is closed. It creates the target backup before copying any source files. `workspace.json` remains the target version so the generated target workspace ID and URI stay intact.
+## Safety and idempotency
 
-## Rollback
+- Export and import recheck actual Windows VS Code processes immediately before copying; `-SkipPrompts` does not bypass that check.
+- Import creates a complete target backup first, preserves target `workspace.json`, removes all other target state, copies source state, and rewrites mapped `chatSessions/*.json` URI references.
+- Repeating the same import converges to the same target file snapshot. Automatically named backups include milliseconds and a GUID; explicit backups never overwrite an existing file.
+- Preparation skips target URIs already present and refuses duplicate map or target-storage records.
+- `state.vscdb` and other non-chat files are copied as binary data. No import occurs unless every selected source has exactly one target.
 
-Close VS Code. Extract the backup ZIP to a temporary directory, then restore the target workspace folders from the backup manifest. The archive contains the original target folder IDs and complete folder contents, including the original `workspace.json`.
+## Rollback and Copilot Chat recovery
+
+Keep the export ZIP, separate chat exports, and target backup until validation is complete. To roll back, close VS Code, expand the backup, and restore each target ID listed in `backup-manifest.json`:
 
 ```powershell
 $restore = Join-Path $env:TEMP 'vscode-copilot-target-restore'
 Remove-Item $restore -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive C:\backup\welnix-target-before-import.zip -DestinationPath $restore
+Expand-Archive "$backup\welnix-target-before-import.zip" -DestinationPath $restore
 Copy-Item "$restore\<target-id>\*" "$storage\<target-id>" -Recurse -Force
 ```
 
-Restore each target ID listed in `backup-manifest.json`, then reopen VS Code through the target distro.
+Use `Chat: Export Chat...` before migration and `Chat: Import Chat...` afterward for individual critical conversations. Settings Sync remains useful for settings, extensions, and keybindings, but is not the transport for workspace-local `workspaceStorage` state. Use the repository helper or `code-wsl` for target opens; do not run a generic `code` command from the source distro and assume it selects the target endpoint.
 
-## Settings Sync and chat export
+## Development
 
-Use local ZIP migration plus `Chat: Export Chat...` JSON files as the primary recovery path for workspace-local chat state. Settings Sync is useful afterward for settings, extensions, keybindings, and other synchronized configuration, but it should not be treated as the transport for this workspace-storage migration. Enable or reconcile Settings Sync after the local target has been validated.
+The standalone flake provides PowerShell, PSScriptAnalyzer 1.25.0, and the formatter:
 
-## Other workspace types
-
-The shared parser recognizes local folders, WSL, SSH Remote, Dev Containers, and Azure ML workspace URIs. The deterministic WSL map generator only creates mappings for the requested source WSL host. Exact URI imports can still be run without `-MappingPath` when source and target URIs are unchanged.
-
-## Validation
-
-Parse-check all scripts with PowerShell 7.5:
-
-```powershell
-Get-ChildItem *.ps1 | ForEach-Object {
-  [scriptblock]::Create((Get-Content $_.FullName -Raw)) | Out-Null
-}
+```bash
+nix develop .#powershell --command powershell-scriptanalyzer \
+  CopilotChatsMigration.psm1 Export-CopilotChats.ps1 Import-CopilotChats.ps1 \
+  New-CopilotChatMigrationMap.ps1 Prepare-CopilotChatTargets.ps1
+nix develop .#powershell --command powershell-format \
+  CopilotChatsMigration.psm1 Export-CopilotChats.ps1 Import-CopilotChats.ps1 \
+  New-CopilotChatMigrationMap.ps1 Prepare-CopilotChatTargets.ps1
+nix flake check
+nix fmt
 ```
 
-For a real inventory, use `Export-CopilotChats.ps1 -ListOnly`. For a real WSL migration, generate the map, review collisions, prepare targets, run importer `-DryRun`, and only then perform the backed-up import.
+The repository also carries `.editorconfig` and `nix-enabled.code-workspace` generated for this workspace by `nix-deterministic-agent`.
+
+## Credits
+
+The original exporter/importer and early fixes were authored by Alexander (Sasha) Ostrikov. The WSL URI mapping, target preparation, backup/rollback flow, and audit fixes in this fork were contributed by Pavel Zadorski.
+
+## Extra credit disclaimer
+
+This is an independent community fork. It is not affiliated with GitHub, Microsoft, VS Code, or the Copilot team. VS Code and Copilot Chat workspace storage is internal implementation detail and may change; keep independent exports and backups.

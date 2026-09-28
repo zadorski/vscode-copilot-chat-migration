@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.5
+#Requires -Version 7.5
 
 [CmdletBinding()]
 param(
@@ -41,7 +41,8 @@ function ConvertTo-CcmWslUri {
     )
 
     $encodedAuthority = [Uri]::EscapeDataString("wsl+$HostName")
-    return "vscode-remote://$encodedAuthority$Path"
+    $encodedPath = (($Path -split '/') | ForEach-Object { [Uri]::EscapeDataString($_) }) -join '/'
+    return "vscode-remote://$encodedAuthority$encodedPath"
 }
 
 function ConvertTo-CcmMappedPath {
@@ -81,6 +82,15 @@ $sourceRecords = @(
         }
 )
 $targetRecords = @(Get-CcmWorkspaceRecords -WorkspaceStoragePath $TargetWorkspaceStoragePath)
+$targetRecordCollisions = @(
+    $targetRecords |
+        Group-Object RawUri |
+        Where-Object Count -GT 1
+)
+if ($targetRecordCollisions.Count -gt 0) {
+    $collisionUris = $targetRecordCollisions | ForEach-Object Name
+    throw "Target workspaceStorage contains duplicate records for: $($collisionUris -join ', '). Resolve duplicates before generating a map."
+}
 
 if ($sourceRecords.Count -eq 0) {
     throw "No source WSL workspace records found for host '$SourceWslHost'."
@@ -95,16 +105,16 @@ $mappings = @(
 
         if (-not $mappedPath) {
             [PSCustomObject]@{
-                SourceId = $source.ID
-                SourceUri = $source.RawUri
-                SourcePath = $source.Path
-                SourceWorkspaceKind = $source.WorkspaceKind
-                TargetUri = $null
-                TargetPath = $null
-                TargetId = $null
-                Status = 'Source path is outside SourcePathPrefix'
+                SourceId               = $source.ID
+                SourceUri              = $source.RawUri
+                SourcePath             = $source.Path
+                SourceWorkspaceKind    = $source.WorkspaceKind
+                TargetUri              = $null
+                TargetPath             = $null
+                TargetId               = $null
+                Status                 = 'Source path is outside SourcePathPrefix'
                 SourceChatSessionCount = $source.ChatSessionCount
-                SourceStateDbMB = $source.StateDbMB
+                SourceStateDbMB        = $source.StateDbMB
             }
             continue
         }
@@ -117,25 +127,26 @@ $mappings = @(
         $target = $targetRecords | Where-Object { $_.RawUri -eq $targetUri } | Select-Object -First 1
 
         [PSCustomObject]@{
-            SourceId = $source.ID
-            SourceUri = $source.RawUri
-            SourcePath = $source.Path
-            SourceWorkspaceKind = $source.WorkspaceKind
-            TargetUri = $targetUri
-            TargetPath = $mappedPath
-            TargetId = if ($target) { $target.ID } else { $null }
-            Status = if ($target) { 'Ready' } else { 'Open target workspace first' }
+            SourceId               = $source.ID
+            SourceUri              = $source.RawUri
+            SourcePath             = $source.Path
+            SourceWorkspaceKind    = $source.WorkspaceKind
+            TargetUri              = $targetUri
+            TargetPath             = $mappedPath
+            TargetId               = if ($target) { $target.ID } else { $null }
+            Status                 = if ($target) { 'Ready' } else { 'Open target workspace first' }
             SourceChatSessionCount = $source.ChatSessionCount
-            SourceStateDbMB = $source.StateDbMB
+            SourceStateDbMB        = $source.StateDbMB
         }
     }
 )
+$mappings = @($mappings | Sort-Object SourcePath, SourceWorkspaceKind, SourceId)
 
 $targetCollisions = @(
     $mappings |
         Where-Object TargetUri |
         Group-Object TargetUri |
-        Where-Object Count -gt 1
+        Where-Object Count -GT 1
 )
 if ($targetCollisions.Count -gt 0) {
     $collisionUris = $targetCollisions | ForEach-Object Name
@@ -152,7 +163,6 @@ if ($targetCollisions.Count -gt 0) {
 }
 
 $mappings |
-    Sort-Object Status, SourcePath |
     Format-Table SourcePath, SourceWorkspaceKind, TargetPath, Status, SourceChatSessionCount, SourceStateDbMB -AutoSize
 
 if (-not $SkipPrompt) {
@@ -164,14 +174,14 @@ if (-not $SkipPrompt) {
 }
 
 $map = [ordered]@{
-    SchemaVersion = 1
-    GeneratedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
-    SourceWslHost = $SourceWslHost
-    TargetWslHost = $TargetWslHost
-    SourcePathPrefix = $SourcePathPrefix
-    TargetPathPrefix = $TargetPathPrefix
+    SchemaVersion               = 1
+    GeneratedAtUtc              = (Get-Date).ToUniversalTime().ToString('o')
+    SourceWslHost               = $SourceWslHost
+    TargetWslHost               = $TargetWslHost
+    SourcePathPrefix            = $SourcePathPrefix
+    TargetPathPrefix            = $TargetPathPrefix
     WorkspaceFileNameForFolders = $WorkspaceFileName
-    Mappings = $mappings
+    Mappings                    = $mappings
 }
 $outputParent = Split-Path -Path $OutputPath -Parent
 if ($outputParent) {

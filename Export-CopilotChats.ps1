@@ -91,26 +91,28 @@ if (-not $SkipPrompts) {
     }
 }
 
+Assert-CcmVsCodeClosed -SkipPrompt:$SkipPrompts
+
 $tempExportPath = Join-Path ([System.IO.Path]::GetTempPath()) "VSCode_Chats_Export_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
 New-Item -ItemType Directory -Path $tempExportPath -Force | Out-Null
 
 try {
     $manifest = [ordered]@{
-        SchemaVersion = 2
-        ExportedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+        SchemaVersion              = 2
+        ExportedAtUtc              = (Get-Date).ToUniversalTime().ToString('o')
         SourceWorkspaceStoragePath = $WorkspaceStoragePath
-        Workspaces = @(
+        Workspaces                 = @(
             $selected | ForEach-Object {
                 [ordered]@{
-                    Id = $_.ID
-                    RawUri = $_.RawUri
-                    DecodedUri = $_.DecodedUri
-                    Type = $_.Type
-                    Host = $_.Host
-                    WorkspaceKind = $_.WorkspaceKind
-                    Path = $_.Path
+                    Id               = $_.ID
+                    RawUri           = $_.RawUri
+                    DecodedUri       = $_.DecodedUri
+                    Type             = $_.Type
+                    Host             = $_.Host
+                    WorkspaceKind    = $_.WorkspaceKind
+                    Path             = $_.Path
                     ChatSessionCount = $_.ChatSessionCount
-                    StateDbMB = $_.StateDbMB
+                    StateDbMB        = $_.StateDbMB
                 }
             }
         )
@@ -119,6 +121,7 @@ try {
 
     Write-Host 'Copying selected workspaces to a temporary export...' -ForegroundColor Cyan
     foreach ($ws in $selected) {
+        Assert-CcmVsCodeClosed -SkipPrompt:$SkipPrompts
         $sourcePath = $ws.FolderPath
         $destPath = Join-Path $tempExportPath $ws.ID
         Write-Host "  Copying: $($ws.Subproject) [$($ws.WorkspaceKind)] ($($ws.Host))..." -ForegroundColor Gray

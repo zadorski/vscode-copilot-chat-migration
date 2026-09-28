@@ -1,0 +1,22 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "nix.serverSettings": {
+      "nixd": {
+        "options": {
+          "nixos": {
+            "expr": "let flake = builtins.getFlake \"${workspaceFolder}\"; override = builtins.getEnv \"NIXD_HOST\"; unixHost = builtins.getEnv \"HOSTNAME\"; windowsHost = builtins.getEnv \"COMPUTERNAME\"; host = if override != \"\" then override else if unixHost != \"\" then unixHost else windowsHost; in if host == \"\" then throw \"nixd: set NIXD_HOST, HOSTNAME, or COMPUTERNAME\" else (builtins.getAttr host flake.nixosConfigurations).options"
+          },
+          "home-manager": {
+            "expr": "let flake = builtins.getFlake \"${workspaceFolder}\"; override = builtins.getEnv \"NIXD_HOST\"; unixHost = builtins.getEnv \"HOSTNAME\"; windowsHost = builtins.getEnv \"COMPUTERNAME\"; host = if override != \"\" then override else if unixHost != \"\" then unixHost else windowsHost; in if host == \"\" then throw \"nixd: set NIXD_HOST, HOSTNAME, or COMPUTERNAME\" else (builtins.getAttr host flake.nixosConfigurations).options.home-manager"
+          }
+        }
+      }
+    },
+    "chat.permissions.default": "autoApprove",
+  }
+}

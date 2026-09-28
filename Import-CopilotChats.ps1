@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.5
+#Requires -Version 7.5
 
 <##
 .SYNOPSIS
@@ -47,17 +47,17 @@ function Get-CcmWorkspaceFromFolder {
         $stateDb = Get-Item -LiteralPath (Join-Path $Folder.FullName 'state.vscdb') -ErrorAction SilentlyContinue
         $chatFiles = @(Get-ChildItem -LiteralPath (Join-Path $Folder.FullName 'chatSessions') -File -Filter '*.json' -ErrorAction SilentlyContinue)
         return [PSCustomObject]@{
-            ExportedFolder = $Folder.FullName
-            SourceId = $Folder.Name
-            SourceUri = $rawUri
-            SourcePath = $info.Path
-            SourceWorkspaceKind = $info.WorkspaceKind
-            SourceType = $info.Type
-            SourceHost = $info.Host
-            SourceProject = $info.Project
-            SourceRepo = $info.Repo
+            ExportedFolder         = $Folder.FullName
+            SourceId               = $Folder.Name
+            SourceUri              = $rawUri
+            SourcePath             = $info.Path
+            SourceWorkspaceKind    = $info.WorkspaceKind
+            SourceType             = $info.Type
+            SourceHost             = $info.Host
+            SourceProject          = $info.Project
+            SourceRepo             = $info.Repo
             SourceChatSessionCount = $chatFiles.Count
-            SourceStateDbMB = if ($stateDb) { [math]::Round($stateDb.Length / 1MB, 2) } else { 0 }
+            SourceStateDbMB        = if ($stateDb) { [math]::Round($stateDb.Length / 1MB, 2) } else { 0 }
         }
     }
     catch {
@@ -124,12 +124,17 @@ function Get-CcmTargetRecord {
 }
 
 function New-CcmTargetBackup {
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
         [object[]]$Plans,
         [Parameter(Mandatory)]
         [string]$OutputPath
     )
+
+    if (-not $PSCmdlet.ShouldProcess($OutputPath, 'Create target workspace backup')) {
+        return
+    }
 
     if (Test-Path -LiteralPath $OutputPath) {
         throw "Backup path already exists: $OutputPath. Choose a new path so an earlier backup cannot be overwritten."
@@ -140,15 +145,15 @@ function New-CcmTargetBackup {
         New-Item -ItemType Directory -Path $outputParent -Force | Out-Null
     }
 
-    $tempBackupPath = Join-Path ([System.IO.Path]::GetTempPath()) "VSCode_Copilot_TargetBackup_$(Get-Date -Format 'yyyyMMdd_HHmmss_fff')"
+    $tempBackupPath = Join-Path ([System.IO.Path]::GetTempPath()) "VSCode_Copilot_TargetBackup_$(Get-Date -Format 'yyyyMMdd_HHmmss_fff')_$([guid]::NewGuid().ToString('N'))"
     New-Item -ItemType Directory -Path $tempBackupPath -Force | Out-Null
 
     try {
         $manifest = [ordered]@{
-            SchemaVersion = 1
-            CreatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+            SchemaVersion              = 1
+            CreatedAtUtc               = (Get-Date).ToUniversalTime().ToString('o')
             TargetWorkspaceStoragePath = $Plans[0].TargetStoragePath
-            Workspaces = @()
+            Workspaces                 = @()
         }
         $seen = @{}
 
@@ -161,8 +166,8 @@ function New-CcmTargetBackup {
             $destination = Join-Path $tempBackupPath $plan.TargetId
             Copy-Item -LiteralPath $plan.TargetFolder -Destination $destination -Recurse -Force
             $manifest.Workspaces += [ordered]@{
-                TargetId = $plan.TargetId
-                TargetUri = $plan.TargetUri
+                TargetId     = $plan.TargetId
+                TargetUri    = $plan.TargetUri
                 TargetFolder = $plan.TargetFolder
             }
         }
@@ -210,6 +215,26 @@ function Copy-CcmWorkspaceState {
     }
 }
 
+function Reset-CcmTargetState {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)]
+        [string]$TargetFolder
+    )
+
+    if (-not $PSCmdlet.ShouldProcess($TargetFolder, 'Remove stale target workspace state')) {
+        return
+    }
+
+    foreach ($child in @(Get-ChildItem -LiteralPath $TargetFolder -Force)) {
+        if ($child.Name -ieq 'workspace.json') {
+            continue
+        }
+
+        Remove-Item -LiteralPath $child.FullName -Recurse -Force
+    }
+}
+
 if (-not $ZipPath) {
     Add-Type -AssemblyName System.Windows.Forms
     $openDialog = [System.Windows.Forms.OpenFileDialog]::new()
@@ -253,7 +278,7 @@ if ($MappingPath) {
         $mapEntries |
             Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.TargetUri) } |
             Group-Object TargetUri |
-            Where-Object Count -gt 1
+            Where-Object Count -GT 1
     )
     if ($duplicateTargets.Count -gt 0) {
         throw "Migration map contains duplicate target URIs: $(($duplicateTargets | ForEach-Object Name) -join ', '). Resolve the map before importing."
@@ -264,13 +289,14 @@ if (-not $SkipPrompts) {
     Write-Host ''
     Write-Host 'Before importing workspace state:' -ForegroundColor Yellow
     Write-Host '  1. Use Command Palette > Chat: Export Chat... for any remaining critical conversations.' -ForegroundColor Yellow
-    Write-Host '  2. Close every VS Code window so workspaceStorage is not being written.' -ForegroundColor Yellow
-    $confirmed = Read-Host 'Have you exported critical chats and closed VS Code? (Y/N)'
+    $confirmed = Read-Host 'Have you exported critical chats? (Y/N)'
     if ($confirmed -notmatch '^[Yy]$') {
         Write-Host 'Import cancelled before copying.' -ForegroundColor Yellow
         return
     }
 }
+
+Assert-CcmVsCodeClosed -SkipPrompt:$SkipPrompts
 
 $tempExtractPath = Join-Path ([System.IO.Path]::GetTempPath()) "VSCode_Copilot_Import_$(Get-Date -Format 'yyyyMMdd_HHmmss_fff')"
 New-Item -ItemType Directory -Path $tempExtractPath -Force | Out-Null
@@ -338,26 +364,26 @@ try {
         }
 
         $plans += [PSCustomObject]@{
-            SourceFolder = $source.ExportedFolder
-            SourceId = $source.SourceId
-            SourceUri = $source.SourceUri
-            SourcePath = $source.SourcePath
-            SourceProject = $source.SourceProject
-            TargetFolder = $target.FolderPath
-            TargetId = $target.ID
-            TargetUri = $target.RawUri
-            TargetPath = $target.Path
+            SourceFolder      = $source.ExportedFolder
+            SourceId          = $source.SourceId
+            SourceUri         = $source.SourceUri
+            SourcePath        = $source.SourcePath
+            SourceProject     = $source.SourceProject
+            TargetFolder      = $target.FolderPath
+            TargetId          = $target.ID
+            TargetUri         = $target.RawUri
+            TargetPath        = $target.Path
             TargetStoragePath = $WorkspaceStoragePath
-            IsExactMatch = $source.SourceUri -eq $target.RawUri
-            ChatSessionCount = $source.SourceChatSessionCount
-            StateDbMB = $source.SourceStateDbMB
+            IsExactMatch      = $source.SourceUri -eq $target.RawUri
+            ChatSessionCount  = $source.SourceChatSessionCount
+            StateDbMB         = $source.SourceStateDbMB
         }
     }
 
     $duplicatePlanTargets = @(
         $plans |
             Group-Object TargetId |
-            Where-Object Count -gt 1
+            Where-Object Count -GT 1
     )
     if ($duplicatePlanTargets.Count -gt 0) {
         $errors += "Multiple exported workspaces resolve to the same target record: $(($duplicatePlanTargets | ForEach-Object Name) -join ', ')"
@@ -395,12 +421,14 @@ try {
         return
     }
 
+    Assert-CcmVsCodeClosed -SkipPrompt:$SkipPrompts
+
     if (-not $BackupPath) {
         $backupParent = Split-Path -Path $ZipPath -Parent
         if (-not $backupParent) {
             $backupParent = (Get-Location).Path
         }
-        $BackupPath = Join-Path $backupParent "VSCode_Target_Backup_$(Get-Date -Format 'yyyyMMdd_HHmmss').zip"
+        $BackupPath = Join-Path $backupParent "VSCode_Target_Backup_$(Get-Date -Format 'yyyyMMdd_HHmmss_fff')_$([guid]::NewGuid().ToString('N')).zip"
     }
 
     Write-Host "Creating target backup at: $BackupPath" -ForegroundColor Cyan
@@ -410,7 +438,9 @@ try {
     $completed = 0
     foreach ($plan in $plans) {
         $completed++
+        Assert-CcmVsCodeClosed -SkipPrompt:$SkipPrompts
         Write-Host "[$completed/$($plans.Count)] Importing $($plan.SourceProject) -> $($plan.TargetPath)" -ForegroundColor Cyan
+        Reset-CcmTargetState -TargetFolder $plan.TargetFolder
         Copy-CcmWorkspaceState -Plan $plan
     }
 
