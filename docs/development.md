@@ -1,15 +1,17 @@
 # Packaging and Development
 
-The repository keeps implementation and Nix packaging separate:
+The repository keeps payload, packaging, and root-wide agreements separate:
 
-- `sources/package.nix` installs the PowerShell module and migration scripts, then exposes wrapper commands for export, import, map generation, and target preparation.
-- `sources/tooling.nix` packages PSScriptAnalyzer 1.25.0 and exposes the analyzer and formatter wrappers.
-- `flake.nix` only connects those sources to packages, the default development shell, checks, and the Nix formatter.
+- `packages/vscode-copilot-chat-migration/` contains the PowerShell module and migration scripts.
+- `packages/vscode-copilot-chat-migration/package.nix` installs that payload and exposes wrapper commands for export, import, map generation, and target preparation.
+- `packages/powershell-tools/` contains the analyzer and formatter wrappers plus their package-local derivation.
+- `flake.nix` only connects the package tree to the default development shell, checks, and the Nix formatter.
+- `justfile` provides short root-level commands without duplicating package logic.
 
 Enter the default shell to access the packaged migration commands and validation tools:
 
 ```bash
-nix develop
+just shell
 copilot-chat-export -?
 copilot-chat-import -?
 copilot-chat-map -?
@@ -19,14 +21,12 @@ copilot-chat-prepare -?
 Run focused validation from the repository root:
 
 ```bash
-nix develop --command powershell-scriptanalyzer \
-  CopilotChatsMigration.psm1 Export-CopilotChats.ps1 Import-CopilotChats.ps1 \
-  New-CopilotChatMigrationMap.ps1 Prepare-CopilotChatTargets.ps1
-nix develop --command powershell-format \
-  CopilotChatsMigration.psm1 Export-CopilotChats.ps1 Import-CopilotChats.ps1 \
-  New-CopilotChatMigrationMap.ps1 Prepare-CopilotChatTargets.ps1
-nix flake check
-nix fmt -- flake.nix sources/package.nix sources/tooling.nix
+just lint
+just format-powershell
+just check
+just format
+just build
+just build-tools
 ```
 
-The package is available as `.#vscode-copilot-chat-migration`; the analyzer and tooling are available as `.#powershell-analyzer` and `.#powershell-tools`. No environment-specific launcher, distro name, or shell integration is part of the package contract.
+The packages are available as `.#vscode-copilot-chat-migration` and `.#powershell-tools`. No environment-specific launcher, distro name, or shell integration is part of the package contract.

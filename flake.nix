@@ -1,67 +1,61 @@
 {
   description = "Safe PowerShell tooling for VS Code Copilot Chat workspace migration";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    pkgs-by-name-for-flake-parts.url = "github:drupol/pkgs-by-name-for-flake-parts";
+  };
 
   outputs =
-    { nixpkgs, ... }:
-    let
+    inputs@{ self, ... }:
+    inputs.flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [
         "x86_64-linux"
         "aarch64-linux"
       ];
-      forAllSystems = nixpkgs.lib.genAttrs systems;
-      toolingSource = import ./sources/tooling.nix;
-      packageSource = import ./sources/package.nix;
-    in
-    {
-      packages = forAllSystems (
-        system:
-        let
-          pkgs = import nixpkgs { inherit system; };
-          tooling = toolingSource { inherit pkgs; };
-          migration = packageSource { inherit pkgs tooling; };
-        in
-        {
-          default = migration.package;
-          vscode-copilot-chat-migration = migration.package;
-          powershell-analyzer = tooling.analyzer;
-          powershell-tools = tooling.powershellTools;
-        }
-      );
 
-      devShells = forAllSystems (
-        system:
+      imports = [ inputs.pkgs-by-name-for-flake-parts.flakeModule ];
+
+      perSystem =
+        { config, pkgs, ... }:
         let
-          pkgs = import nixpkgs { inherit system; };
-          tooling = toolingSource { inherit pkgs; };
-          migration = packageSource { inherit pkgs tooling; };
+          migrationScripts = map (name: "${self}/packages/vscode-copilot-chat-migration/${name}") [
+            "CopilotChatsMigration.psm1"
+            "Export-CopilotChats.ps1"
+            "Import-CopilotChats.ps1"
+            "New-CopilotChatMigrationMap.ps1"
+            "Prepare-CopilotChatTargets.ps1"
+          ];
         in
         {
-          default = pkgs.mkShell {
+          pkgsDirectory = self + "/packages";
+
+          devShells.default = pkgs.mkShell {
             packages = [
               pkgs.powershell
-              migration.package
-              tooling.powershellTools
+              config.packages.vscode-copilot-chat-migration
+              config.packages.powershell-tools
             ];
             POWERSHELL_TELEMETRY_OPTOUT = "1";
             POWERSHELL_UPDATECHECK = "Off";
           };
-        }
-      );
 
-      checks = forAllSystems (
-        system:
-        let
-          pkgs = import nixpkgs { inherit system; };
-          tooling = toolingSource { inherit pkgs; };
-          migration = packageSource { inherit pkgs tooling; };
-        in
-        {
-          powershell-scripts = migration.check;
-        }
-      );
+          checks.powershell-scripts =
+            pkgs.runCommand "vscode-copilot-chat-migration-check"
+              {
+                nativeBuildInputs = [
+                  pkgs.powershell
+                  config.packages.powershell-tools
+                ];
+              }
+              ''
+                powershell-scriptanalyzer ${pkgs.lib.escapeShellArgs migrationScripts}
+                powershell-format ${pkgs.lib.escapeShellArgs migrationScripts}
+                touch "$out"
+              '';
 
-      formatter = forAllSystems (system: (import nixpkgs { inherit system; }).nixfmt);
+          formatter = pkgs.nixfmt;
+        };
     };
 }

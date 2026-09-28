@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PSSCRIPTANALYZER_MODULE="@psScriptAnalyzerModule@"
+export PSModulePath="@psModulePath@${PSModulePath:+:$PSModulePath}"
+
+if [[ "$#" -eq 0 ]]; then
+  exit 0
+fi
+
+exec "@pwsh@" -NoProfile -NonInteractive -File "@toolsShare@/powershell-scriptanalyzer.ps1" "$@"
